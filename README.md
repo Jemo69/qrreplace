@@ -30,7 +30,7 @@ Three faces, one app:
    dimming and position is editable. One-click presets (Giving, Wi-Fi,
    Announcement), screen layouts (lower third / half / full), unlimited saved
    designs per church, venue or event.
-4. **Logos, images & more.** Layer types: **QR code**, **text**, **logo/image**
+4. **Logos, images & more.** Layer types: **QR code** (auto-generated from any link/text/Wi-Fi string, or your own uploaded QR picture), **text**, **logo/image**
    (upload any picture, one-click corner placement), **background photo**
    (upload or solid tint + dimmer), **bars/shapes**. Reorder, duplicate, lock,
    hide, fade.

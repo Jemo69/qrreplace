@@ -64,6 +64,9 @@ def set_scene(data: Dict[str, Any]) -> int:
                 L["id"] = uuid.uuid4().hex[:8]
             L.setdefault("opacity", 1.0)
             L.setdefault("visible", True)
+            if L.get("type") == "qr":
+                # pre-custom-QR scenes have no qrMode — they are generated codes.
+                L.setdefault("qrMode", "generated")
         _scene = data
         _scene_version += 1
         v = _scene_version
@@ -382,7 +385,8 @@ def quick_current() -> Dict[str, Any]:
     sc = get_scene()
     qr = ""
     for L in sc.get("layers", []):
-        if isinstance(L, dict) and L.get("type") == "qr" and L.get("visible", True):
+        if (isinstance(L, dict) and L.get("type") == "qr" and L.get("visible", True)
+                and L.get("qrMode", "generated") != "custom"):
             qr = L.get("content", "")
             break
     _, t, st = _pick_text_layers(sc)
@@ -403,7 +407,8 @@ async def api_quick_set(body: QuickBody):
     sc = get_scene()
     if body.qr is not None:
         for L in sc.get("layers", []):
-            if isinstance(L, dict) and L.get("type") == "qr" and L.get("visible", True):
+            if (isinstance(L, dict) and L.get("type") == "qr" and L.get("visible", True)
+                    and L.get("qrMode", "generated") != "custom"):
                 L["content"] = body.qr
                 break
     _, t, st = _pick_text_layers(sc)

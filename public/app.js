@@ -203,7 +203,28 @@ function drawLayer(L) {
       ctx.fillText("logo / image", dx + dw / 2, dy + dh / 2);
     }
   } else if (L.type === "qr") {
-    drawQRPlaceholder(L, dx, dy, dw, dh);
+    if (L.qrMode === "custom") {
+      if (L.showBox !== false && !L.transparentBg) {
+        ctx.fillStyle = css(L.bg || "#ffffff", 1);
+        rr(dx, dy, dw, dh, (L.radius || 24) * S);
+        ctx.fill();
+      }
+      const pad = (L.pad || 20) * S;
+      const im = L.src ? imgFor(L.src) : null;
+      if (im && im.complete && im.naturalWidth) {
+        if (L.showBox !== false && !L.transparentBg)
+          drawImageFit(im, dx + pad, dy + pad, dw - pad * 2, dh - pad * 2, "contain");
+        else
+          drawImageFit(im, dx, dy, dw, dh, "contain");
+      } else {
+        ctx.fillStyle = "#282e40"; ctx.fillRect(dx, dy, dw, dh);
+        ctx.strokeStyle = "#ffb020"; ctx.setLineDash([6, 4]); ctx.strokeRect(dx, dy, dw, dh); ctx.setLineDash([]);
+        ctx.fillStyle = "#aab4cf"; ctx.font = "12px sans-serif"; ctx.textAlign = "center";
+        ctx.fillText("own QR image — click right to upload", dx + dw / 2, dy + dh / 2);
+      }
+    } else {
+      drawQRPlaceholder(L, dx, dy, dw, dh);
+    }
   } else if (L.type === "text") {
     const px = (L.fontSize || 64) * S;
     ctx.font = `${L.bold ? "700" : "400"} ${px}px -apple-system,"Segoe UI",Roboto,Arial,sans-serif`;
@@ -370,17 +391,31 @@ function luminance(hex) {
   return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
 }
 function qrHealth() {
-  const qrs = (state.scene?.layers || []).filter((l) => l.type === "qr" && l.visible);
+  const qrs = (state.scene?.layers || []).filter((l) => (l.type === "qr" || l.qrImage) && l.visible);
   if (!qrs.length) return { level: "", msg: "QR: none on screen" };
   const warns = [];
+  let customCount = 0;
   for (const q of qrs) {
-    if (!q.content?.trim()) warns.push("QR text is empty");
+    if (q.qrMode === "custom") {
+      customCount++;
+      if (!q.src) warns.push("Own QR image is missing — upload the picture");
+      if (Math.min(q.w, q.h) < 220) warns.push(`QR “${q.name}” is small — phones may struggle (≥220px)`);
+      if (q.x < 0 || q.y < 0 || q.x + q.w > CW || q.y + q.h > CH) warns.push("QR is partly off-screen");
+      continue;
+    }
+    if (q.qrImage) {
+      warns.push("Uploaded QR image: scan True output with your phone before going live");
+    } else if (!q.content?.trim()) warns.push("QR text is empty");
     if (Math.min(q.w, q.h) < 220) warns.push(`QR “${q.name}” is small — phones may struggle (≥220px)`);
     const fgL = luminance(q.transparentBg ? q.fg : q.fg), bgL = luminance(q.showBox === false || q.transparentBg ? "#ffffff" : q.bg);
-    if (Math.abs(fgL - bgL) < 0.4) warns.push("QR contrast is low — dark code on light card scans best");
+    if (!q.qrImage && Math.abs(fgL - bgL) < 0.4) warns.push("QR contrast is low — dark code on light card scans best");
     if (q.x < 0 || q.y < 0 || q.x + q.w > CW || q.y + q.h > CH) warns.push("QR is partly off-screen");
   }
-  if (!warns.length) return { level: "ok", msg: `QR: looks scannable ✓ (${qrs.length})` };
+  if (!warns.length) {
+    if (customCount && customCount === qrs.length)
+      return { level: "ok", msg: `QR: own image — check it scans ✓ (${qrs.length})` };
+    return { level: "ok", msg: `QR: looks scannable ✓ (${qrs.length})` };
+  }
   return { level: "warn", msg: "QR: " + warns[0], warns };
 }
 function updateHealth() {
@@ -476,11 +511,16 @@ function addLayer(kind) {
   const cx = CW / 2, cy = CH / 2;
   let L = null;
   if (kind === "qr") L = { id: uid(), type: "qr", name: "QR code", x: cx - 190, y: cy - 100, w: 380, h: 380,
-    opacity: 1, visible: true, lock: false, content: "https://example.com", fg: "#0d1326",
+    opacity: 1, visible: true, lock: false, qrMode: "generated", src: "", content: "https://example.com", fg: "#0d1326",
     bg: "#ffffff", transparentBg: false, showBox: true, radius: 28, pad: 22 };
   else if (kind === "text") L = { id: uid(), type: "text", name: "Heading", x: cx - 400, y: cy - 60, w: 800, h: 140,
     opacity: 1, visible: true, lock: false, text: "New heading — click to edit", fontSize: 84,
     color: "#ffffff", bold: true, align: "center" };
+  else if (kind === "qr-image") { openUpload((info) => {
+      insertLayer({ id: uid(), type: "image", qrImage: true, name: "Uploaded QR code",
+        x: cx - 190, y: cy - 100, w: 380, h: 380,
+        opacity: 1, visible: true, lock: false, src: info.src, fit: "contain" });
+    }); return; }
   else if (kind === "image") { openUpload((info) => {
       const W = 420, H = Math.max(80, Math.round(420 * (info.h / Math.max(1, info.w))));
       insertLayer({ id: uid(), type: "image", name: "Logo", x: CW - W - 90, y: CH - H - 90, w: W, h: H,
@@ -586,6 +626,37 @@ function renderProps() {
   box.appendChild(nameRow);
 
   if (L.type === "qr") {
+    box.appendChild(group("QR source", (g) => {
+      g.appendChild(segRow([["generated", "Auto QR"], ["custom", "My own QR image"]], L.qrMode || "generated",
+        (v) => {
+          L.qrMode = v;
+          if (v === "custom" && !L.src) {
+            renderProps();
+            openUpload((info) => { L.src = info.src; markDirty(); renderPanels(); });
+          } else {
+            markDirty(); renderProps();
+          }
+        }));
+      if ((L.qrMode || "generated") === "custom") {
+        if (L.src) {
+          const im = document.createElement("img");
+          im.className = "thumb"; im.src = srcToUrl(L.src);
+          g.appendChild(im);
+        }
+        const row = document.createElement("div");
+        row.className = "row";
+        const ch = document.createElement("button");
+        ch.className = "btn small"; ch.textContent = L.src ? "Replace image…" : "Upload QR image…";
+        ch.onclick = () => openUpload((info) => { L.src = info.src; markDirty(); renderPanels(); });
+        row.appendChild(ch);
+        g.appendChild(row);
+        const hint = document.createElement("p");
+        hint.className = "muted small";
+        hint.textContent = "Your picture is shown as-is on air. Make sure it scans before going live.";
+        g.appendChild(hint);
+      }
+    }));
+    if ((L.qrMode || "generated") === "generated") {
     box.appendChild(group("Where should it go?", (g) => {
       const t = document.createElement("textarea");
       t.value = L.content || ""; t.placeholder = "https://…  or  WIFI:T:WPA;S:Name;P:pass;;  or plain text";
@@ -596,9 +667,12 @@ function renderProps() {
       hint.innerHTML = `For Wi-Fi use: <code>WIFI:T:WPA;S:YourName;P:password;;</code>`;
       g.appendChild(hint);
     }));
+    }
     box.appendChild(group("Look", (g) => {
+      if ((L.qrMode || "generated") === "generated") {
       g.appendChild(lbl("Code color"));
       g.appendChild(swatchRow(L.fg, (c) => { L.fg = c; markDirty(); renderProps(); }));
+      }
       const chk = document.createElement("label");
       chk.className = "chk";
       chk.innerHTML = `<input type="checkbox" ${L.showBox === false || L.transparentBg ? "" : "checked"}> White card behind the code <span class="hint">scans best</span>`;

@@ -53,6 +53,7 @@ def _qr(x: int, y: int, s: int, content: str, fg: str = "#0d1326", pad: int = 22
         "id": _id(), "type": "qr", "name": "QR code",
         "x": x, "y": y, "w": s, "h": s,
         "opacity": 1, "visible": True, "lock": False,
+        "qrMode": "generated", "src": "",
         "content": content, "fg": fg, "bg": "#ffffff",
         "transparentBg": False, "showBox": True, "radius": 28, "pad": pad,
     }

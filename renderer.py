@@ -252,13 +252,44 @@ def render_scene(scene: Dict[str, Any], out_w: int = CANVAS_W, out_h: int = CANV
                 surf.alpha_composite(tmp)
 
             elif t == "qr":
+                show_box = bool(L.get("showBox", True))
+                radius = int(L.get("radius", 24))
+                pad = int(L.get("pad", 18))
+                # Custom QR image mode: user uploaded their own QR picture.
+                # Render it as-is (inside the card when show_box is on).
+                if L.get("qrMode") == "custom":
+                    src = L.get("src", "")
+                    path = resolve_src(src) if src else None
+                    img = load_image_cached(path) if path else None
+                    if img is None:
+                        ph = Image.new("RGBA", (int(w), int(h)), (40, 44, 60, 255))
+                        d = ImageDraw.Draw(ph)
+                        d.rectangle([0, 0, int(w) - 1, int(h) - 1], outline=(255, 176, 32, 255), width=3)
+                        ph = apply_opacity(ph, opacity)
+                        surf.alpha_composite(ph, (int(x), int(y)))
+                        continue
+                    if show_box and not bool(L.get("transparentBg", False)):
+                        card = Image.new("RGBA", (int(w), int(h)), (0, 0, 0, 0))
+                        d = ImageDraw.Draw(card)
+                        bg_rgb = hex_to_rgb(L.get("bg", "#ffffff"), (255, 255, 255))
+                        d.rounded_rectangle([0, 0, int(w) - 1, int(h) - 1], radius=radius, fill=(*bg_rgb, 255))
+                        iw, ih = int(w) - pad * 2, int(h) - pad * 2
+                        if iw > 10 and ih > 10:
+                            scale = min(iw / img.width, ih / img.height)
+                            nw, nh = max(1, int(img.width * scale)), max(1, int(img.height * scale))
+                            qf = img.resize((nw, nh), Image.LANCZOS)
+                            card.alpha_composite(qf, (pad + (iw - nw) // 2, pad + (ih - nh) // 2))
+                        card = apply_opacity(card, opacity)
+                        surf.alpha_composite(card, (int(x), int(y)))
+                    else:
+                        qf = img.resize((int(w), int(h)), Image.LANCZOS)
+                        qf = apply_opacity(qf, opacity)
+                        surf.alpha_composite(qf, (int(x), int(y)))
+                    continue
                 content = L.get("content", "https://example.com")
                 fg = L.get("fg", "#000000")
                 bgc = L.get("bg", "#ffffff")
                 tbg = bool(L.get("transparentBg", False))
-                show_box = bool(L.get("showBox", True))
-                radius = int(L.get("radius", 24))
-                pad = int(L.get("pad", 18))
                 qimg = make_qr_image(content, fg, bgc, transparent_bg=(tbg and not show_box))
                 if show_box and not tbg:
                     # white rounded card behind QR
