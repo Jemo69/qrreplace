@@ -85,11 +85,15 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
-      - name: Publish release (one file per OS)
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            artifacts/QRReplace-windows/QRReplace.exe
-            artifacts/QRReplace-macos/QRReplace-mac.dmg
-            artifacts/QRReplace-linux/QRReplace
-          generate_release_notes: true
+      - name: Publish release (sequential uploads — parallel asset
+          # uploads proved flaky, so we upload one file at a time.)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          ls -la artifacts/*/*
+          gh release create "$TAG" --title "$TAG" --generate-notes --draft || true
+          gh release upload "$TAG" --clobber artifacts/QRReplace-windows/QRReplace.exe
+          gh release upload "$TAG" --clobber artifacts/QRReplace-macos/QRReplace-mac.dmg
+          gh release upload "$TAG" --clobber artifacts/QRReplace-linux/QRReplace
+          gh release edit "$TAG" --draft=false
