@@ -1,0 +1,7 @@
+uploads/
+templates/*.json
+__pycache__/
+*.pyc
+dist/
+build/
+*.spec.bak

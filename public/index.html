@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QRReplace — NDI Lower-Third Studio</title>
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ══════════ TOP BAR ══════════ -->
+  <header id="topbar">
+    <div class="brand">
+      <div class="brand-mark">QR</div>
+      <div class="brand-text">
+        <strong>QRReplace</strong>
+        <span>NDI Lower-Third Studio</span>
+      </div>
+    </div>
+
+    <div class="steps" id="steps">
+      <div class="step active" data-step="1"><b>1</b><span>Design</span></div>
+      <div class="step" data-step="2"><b>2</b><span>Check</span></div>
+      <div class="step" data-step="3"><b>3</b><span>Go Live</span></div>
+    </div>
+
+    <input id="tplName" class="tpl-name" value="Sunday Service — Give QR" spellcheck="false" title="Design name — click to rename">
+
+    <div class="mode-seg" role="tablist" title="Simple hides technical settings. Pro shows everything.">
+      <button id="modeSimple" class="on">Simple</button>
+      <button id="modePro">Pro</button>
+    </div>
+
+    <div class="live-pill" id="livePill" title="NDI output status"><i></i><span>Off air</span></div>
+    <button id="btnLive" class="btn-live">● Go Live</button>
+    <button id="btnHelp" class="btn-icon" title="How to use (3 steps)">?</button>
+  </header>
+
+  <!-- ══════════ MAIN ══════════ -->
+  <main id="main">
+
+    <!-- ── LEFT ── -->
+    <aside id="left">
+      <section class="card">
+        <h3>Start from a preset <span class="hint">one click, then tweak</span></h3>
+        <div class="presets">
+          <button class="preset" data-preset="giving">
+            <b>⛪ Giving</b><span>Lower-third + QR</span>
+          </button>
+          <button class="preset" data-preset="wifi">
+            <b>📶 Wi-Fi / Check-in</b><span>Half panel + big QR</span>
+          </button>
+          <button class="preset" data-preset="announce">
+            <b>📣 Announcement</b><span>Full-width banner</span>
+          </button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h3>Add to the screen</h3>
+        <div class="add-grid">
+          <button class="add" data-add="qr"><b>◧</b><span>QR code</span></button>
+          <button class="add" data-add="text"><b>T</b><span>Text</span></button>
+          <button class="add" data-add="image"><b>🖼</b><span>Logo / image</span></button>
+          <button class="add" data-add="background"><b>🌄</b><span>Background</span></button>
+          <button class="add" data-add="shape"><b>▬</b><span>Bar / shape</span></button>
+        </div>
+        <input type="file" id="fileInput" accept="image/*" hidden>
+      </section>
+
+      <section class="card grow">
+        <h3>Layers <span class="hint">top = in front</span></h3>
+        <div id="layerList" class="layers"></div>
+      </section>
+
+      <section class="card">
+        <h3>My designs</h3>
+        <div class="row">
+          <input id="saveName" placeholder="Name this design…" maxlength="60">
+          <button id="btnSave" class="btn small">Save</button>
+        </div>
+        <div id="tplList" class="tpl-list"></div>
+        <div class="row" style="margin-top:8px">
+          <button id="btnExport" class="btn small ghost">⬇ PNG snapshot</button>
+        </div>
+      </section>
+    </aside>
+
+    <!-- ── CENTER STAGE ── -->
+    <section id="stage-wrap">
+      <div id="stage-toolbar">
+        <label class="chk"><input type="checkbox" id="chkGuides" checked> Guides</label>
+        <label class="chk"><input type="checkbox" id="chkTrue"> True output <span class="hint">pixel-exact NDI view</span></label>
+        <span class="spacer"></span>
+        <span id="canvasMeta" class="meta">1920 × 1080</span>
+        <button id="btnTrueRefresh" class="btn small ghost" title="Refresh true-output preview">↻</button>
+      </div>
+      <div id="stage-scroll">
+        <div id="stage">
+          <canvas id="editor" width="960" height="540"></canvas>
+          <img id="trueImg" alt="True NDI output preview" hidden>
+          <div id="emptyHint" hidden>Click <b>+</b> on the left to add something to the screen.</div>
+        </div>
+      </div>
+      <div id="health">
+        <div class="chip ok" id="chipQR">QR: checking…</div>
+        <div class="chip" id="chipAlpha">Overlay: transparent top</div>
+        <div class="chip" id="chipSize">Output: 1920×1080</div>
+        <div class="chip warn" id="chipWarn" hidden></div>
+      </div>
+      <p class="coach" id="coach">Drag anything to move it. Drag a <b>corner square</b> to resize. Click an item to edit it on the right. When it looks right, press <b>Go Live</b>.</p>
+    </section>
+
+    <!-- ── RIGHT ── -->
+    <aside id="right">
+      <section class="card" id="propsCard">
+        <h3 id="propsTitle">Nothing selected</h3>
+        <div id="props"><p class="muted">Click anything on the screen to edit its text, colors and size here.</p></div>
+      </section>
+
+      <section class="card">
+        <h3>Screen layout</h3>
+        <div class="seg" id="layoutSeg">
+          <button data-layout="lower" class="on">Lower third</button>
+          <button data-layout="half">Half screen</button>
+          <button data-layout="full">Full screen</button>
+        </div>
+        <label class="chk big"><input type="checkbox" id="chkAlpha" checked>
+          <span><b>See-through top</b><br><small>Top half stays transparent so live video shows through in vMix / OBS.</small></span>
+        </label>
+      </section>
+
+      <section class="card pro-only">
+        <h3>Canvas background color <span class="hint">only if see-through is off</span></h3>
+        <div class="row"><input type="color" id="bgColor" value="#000000"><span class="muted">solid fallback</span></div>
+      </section>
+
+      <section class="card" id="ndiCard">
+        <h3>Broadcast <span class="hint">NDI on your network</span></h3>
+        <div class="row"><label class="lbl">Source name</label></div>
+        <div class="row"><input id="ndiName" value="QRReplace" maxlength="64"></div>
+        <div class="pro-only">
+          <div class="row two">
+            <div><label class="lbl">Smoothness</label>
+              <select id="ndiFps"><option>24</option><option selected>30</option><option>60</option></select>
+            </div>
+            <div><label class="lbl">Sharpness</label>
+              <select id="ndiScale"><option value="1080p">1080p HD</option><option value="720p">720p</option><option value="540p">540p fast</option></select>
+            </div>
+          </div>
+          <label class="chk"><input type="checkbox" id="ndiAlpha" checked> Keep transparency in NDI signal</label>
+          <div class="ndi-stats">
+            <div><span>Viewers</span><b id="stView">0</b></div>
+            <div><span>Speed</span><b id="stFps">–</b></div>
+            <div><span>Frames</span><b id="stFrames">0</b></div>
+          </div>
+          <div class="row"><button id="btnDiag" class="btn small ghost">Network addresses</button></div>
+          <div id="netList" class="muted small"></div>
+        </div>
+        <p class="muted small">Simple mode: just press <b>Go Live</b>, then find <b id="ndiNameEcho">QRReplace</b> in NDI Studio Monitor, OBS or vMix on the same network.</p>
+      </section>
+    </aside>
+  </main>
+
+  <!-- ══════════ STATUS BAR ══════════ -->
+  <footer id="statusbar">
+    <span id="sbNdi"><i></i> NDI off</span>
+    <span id="sbQr">QR —</span>
+    <span class="spacer"></span>
+    <span id="sbSaved">Saved ✓</span>
+  </footer>
+</div>
+
+<!-- help modal -->
+<div id="helpModal" hidden>
+  <div class="modal">
+    <h2>QRReplace in 3 steps</h2>
+    <ol>
+      <li><b>Design.</b> Pick a preset on the left, or add a QR code, text and your logo. Drag things where you want them.</li>
+      <li><b>Check.</b> Turn on <b>True output</b> above the screen — that's exactly what the network sees. Green QR chip = phones can scan it.</li>
+      <li><b>Go Live.</b> Press <b>Go Live</b>. On another computer on the same Wi-Fi / network, open NDI Studio Monitor, OBS (NDI plugin) or vMix and choose your source name.</li>
+    </ol>
+    <p class="muted">Tips: keep the QR bigger than a playing card on screen. Dark QR on a light card scans best. The top half can stay see-through so it overlays your live video.</p>
+    <button id="btnHelpClose" class="btn">Got it</button>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>
