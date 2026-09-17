@@ -9,14 +9,40 @@ Output: dist/QRReplace(.exe) — double-click, desktop window opens
         (+ web editor opens in the browser, LAN-ready).
 """
 import os
-from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs
+from PyInstaller.utils.hooks import (
+    collect_data_files,
+    collect_dynamic_libs,
+    collect_submodules,
+)
 
 block_cipher = None
 
-# cyndilib ships a native NDI lib — bundle every binary it needs.
+# cyndilib ships native NDI libs TWO ways — bundle ALL of them:
+#  1. cyndilib.libs/  (auditwheel/delvewheel hashed deps incl. libndi itself;
+#     the Cython extensions find them via their $ORIGIN/../cyndilib.libs RPATH)
+#  2. cyndilib/wrapper/bin/<platform>/  (the dynloaded libndi copy)
+# Without both, the frozen app silently drops to preview-only NDI mode.
 ndi_binaries = []
 try:
-    ndi_binaries = collect_dynamic_libs("cyndilib")
+    ndi_binaries = list(collect_dynamic_libs("cyndilib"))
+except Exception:
+    pass
+try:
+    import glob as _glob
+    import importlib.util as _ilu
+    _spec = _ilu.find_spec("cyndilib")
+    _pkgdir = (_spec.submodule_search_locations or [None])[0]
+    if _pkgdir:
+        _site_parent = os.path.dirname(_pkgdir)
+        for _pattern in ("cyndilib.libs", "cyndilib.libs*"):
+            for _libdir in _glob.glob(os.path.join(_site_parent, _pattern)):
+                if os.path.isdir(_libdir):
+                    _dest = os.path.basename(_libdir.rstrip(os.sep))
+                    for _fn in sorted(os.listdir(_libdir)):
+                        _fp = os.path.join(_libdir, _fn)
+                        if os.path.isfile(_fp) and not _fn.endswith((".py", ".pyi", ".txt", ".md")):
+                            if (_fp, _dest) not in ndi_binaries:
+                                ndi_binaries.append((_fp, _dest))
 except Exception:
     pass
 try:
@@ -40,7 +66,7 @@ a = Analysis(
         "fastapi", "starlette", "pydantic", "multipart",
         "PIL", "numpy", "qrcode", "cyndilib",
         "paths", "renderer", "ndi_sender", "presets", "server",
-    ],
+    ] + collect_submodules("cyndilib"),  # Cython submods (e.g. wrapper.common)
     hookspath=[],
     hooksconfig={},
     runtime_hooks=["pyi_rth_ndi.py"],

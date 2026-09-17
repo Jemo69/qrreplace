@@ -208,6 +208,7 @@ def status_dict() -> Dict[str, Any]:
         "connections": int(ndi_state.get("connections", 0)),
         "haveNdi": HAVE_NDI,
         "previewOnly": (not HAVE_NDI),
+        "ndiImportError": (ndi.import_error or "")[:300],
         "resolution": SCALE_MAP.get(ndi_state.get("scale", "1080p"), (1920, 1080)),
         "lastError": ndi_state.get("lastError", "") or ndi.last_send_error,
         "sceneVersion": _scene_version,
