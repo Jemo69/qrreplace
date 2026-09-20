@@ -1,0 +1,26 @@
+[project]
+name = "qrreplace"
+version = "1.0.4"
+description = "NDI Lower-Third Studio — design templates with QR codes and broadcast live as NDI"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+    { name = "Jemo69", email = "jemolife69@gmail.com" }
+]
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "cyndilib>=0.0.8",
+    "pillow>=10.0.0",
+    "numpy>=1.26",
+    "qrcode>=7.4",
+    "python-multipart>=0.0.9",
+]
+
+[dependency-groups]
+dev = [
+    "pyinstaller>=6.0",
+]
+
+[tool.uv]
+package = false

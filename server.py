@@ -17,7 +17,7 @@ from typing import Any, Dict, List, Optional, Set
 
 from fastapi import FastAPI, File, Header, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -296,6 +296,7 @@ async def api_get_scene():
 async def api_set_scene(body: Dict[str, Any]):
     try:
         v = set_scene(body)
+        await _ws_broadcast({"type": "scene", "data": get_scene(), "sceneVersion": v})
         return {"success": True, "sceneVersion": v}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -418,6 +419,7 @@ async def api_quick_set(body: QuickBody):
     if body.subtitle is not None and st is not None:
         st["text"] = body.subtitle
     v = set_scene(sc)
+    await _ws_broadcast({"type": "scene", "data": get_scene(), "sceneVersion": v})
     return {"success": True, "sceneVersion": v, "quick": quick_current()}
 
 
@@ -437,11 +439,12 @@ async def api_apply_preset(name: str):
     v = set_scene(fn())
     sc = get_scene()
     sc["sceneVersion"] = v
+    await _ws_broadcast({"type": "scene", "data": sc, "sceneVersion": v})
     return sc
 
 
 @app.get("/api/preview.png")
-async def api_preview(w: int = Query(960, ge=160, le=1920), h: int = Query(540, ge=90, le=1080)):
+async def api_preview(w: int = Query(960, ge=160, le=3840), h: int = Query(540, ge=90, le=2160)):
     snap = get_scene()
     try:
         png = renderer.render_png_bytes(snap, w, h)
@@ -489,7 +492,8 @@ async def api_load_template(name: str):
         raise HTTPException(status_code=404, detail="Template not found")
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
-    set_scene(data)
+    v = set_scene(data)
+    await _ws_broadcast({"type": "scene", "data": data, "sceneVersion": v})
     return data
 
 
@@ -508,6 +512,16 @@ async def api_delete_template(name: str):
 async def api_network():
     port = int(os.environ.get("PORT", "3200"))
     return {"port": port, "urls": get_network_ips(port)}
+
+
+@app.get("/display")
+@app.get("/view")
+@app.get("/output")
+async def api_display_page():
+    path = os.path.join(PUBLIC_DIR, "display.html")
+    if os.path.isfile(path):
+        return FileResponse(path, media_type="text/html")
+    raise HTTPException(status_code=404, detail="Display page not found")
 
 
 @app.websocket("/ws")
@@ -554,9 +568,11 @@ if __name__ == "__main__":
     print("\n==================================================")
     print("  QRReplace — half-screen NDI template + QR")
     print("==================================================")
-    print(f"  UI:  http://localhost:{port}")
+    print(f"  UI:       http://localhost:{port}")
+    print(f"  Display:  http://localhost:{port}/display")
     for u in get_network_ips(port):
-        print(f"  LAN: {u}")
-    print(f"  NDI: {'cyndilib OK' if HAVE_NDI else 'preview-only (cyndilib missing)'}")
+        print(f"  LAN:      {u}")
+        print(f"  LAN View: {u}/display")
+    print(f"  NDI:      {'cyndilib OK' if HAVE_NDI else 'preview-only (cyndilib missing)'}")
     print("==================================================\n")
     uvicorn.run("server:app", host="0.0.0.0", port=port, log_level="warning", use_colors=False)

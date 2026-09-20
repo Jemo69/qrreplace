@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QRReplace — Display Output</title>
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: transparent;
+      user-select: none;
+      -webkit-user-select: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    /* Optional background styling via ?bg= */
+    body.bg-checker {
+      background-color: #12141a;
+      background-image:
+        linear-gradient(45deg, #1d212b 25%, transparent 25%),
+        linear-gradient(-45deg, #1d212b 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #1d212b 75%),
+        linear-gradient(-45deg, transparent 75%, #1d212b 75%);
+      background-size: 24px 24px;
+      background-position: 0 0, 0 12px, 12px -12px, -12px 0px;
+    }
+    body.bg-black {
+      background: #000000;
+    }
+    body.bg-white {
+      background: #ffffff;
+    }
+
+    #stage {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #render-img {
+      max-width: 100%;
+      max-height: 100%;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+      border: 0;
+      outline: none;
+    }
+    #render-img.fit-cover {
+      object-fit: cover;
+    }
+    #render-img.fit-fill {
+      object-fit: fill;
+    }
+  </style>
+</head>
+<body>
+  <div id="stage">
+    <img id="render-img" alt="" />
+  </div>
+
+  <script>
+    (function () {
+      const params = new URLSearchParams(window.location.search);
+      const img = document.getElementById("render-img");
+
+      // Custom background from query: ?bg=black | ?bg=checker | ?bg=white | ?bg=transparent (default)
+      const bgParam = (params.get("bg") || "transparent").toLowerCase();
+      if (bgParam === "black" || bgParam === "000" || bgParam === "dark") {
+        document.body.classList.add("bg-black");
+      } else if (bgParam === "checker") {
+        document.body.classList.add("bg-checker");
+      } else if (bgParam === "white" || bgParam === "fff") {
+        document.body.classList.add("bg-white");
+      } else if (bgParam.startsWith("#") || /^[0-9a-f]{6}$/i.test(bgParam)) {
+        document.body.style.background = bgParam.startsWith("#") ? bgParam : "#" + bgParam;
+      }
+
+      // Custom scaling from query: ?fit=contain (default) | ?fit=cover | ?fit=fill
+      const fitParam = (params.get("fit") || "contain").toLowerCase();
+      if (fitParam === "cover") img.classList.add("fit-cover");
+      else if (fitParam === "fill") img.classList.add("fit-fill");
+
+      const renderW = parseInt(params.get("w") || "1920", 10);
+      const renderH = parseInt(params.get("h") || "1080", 10);
+
+      let lastVersion = -1;
+      let isFetching = false;
+      let pendingRefresh = false;
+      let ws = null;
+
+      function triggerRefresh() {
+        if (isFetching) {
+          pendingRefresh = true;
+          return;
+        }
+        isFetching = true;
+        pendingRefresh = false;
+
+        const nextUrl = `/api/preview.png?w=${renderW}&h=${renderH}&ts=${Date.now()}`;
+        const preloader = new Image();
+        preloader.onload = () => {
+          img.src = nextUrl;
+          isFetching = false;
+          if (pendingRefresh) {
+            triggerRefresh();
+          }
+        };
+        preloader.onerror = () => {
+          isFetching = false;
+          if (pendingRefresh) {
+            setTimeout(triggerRefresh, 1000);
+          }
+        };
+        preloader.src = nextUrl;
+      }
+
+      // Check scene version via API
+      async function checkStatus() {
+        try {
+          const res = await fetch("/api/status", { cache: "no-store" });
+          if (!res.ok) return;
+          const data = await res.json();
+          if (data.sceneVersion !== undefined && data.sceneVersion !== lastVersion) {
+            lastVersion = data.sceneVersion;
+            triggerRefresh();
+          }
+        } catch (e) {}
+      }
+
+      // WebSocket connection for instant zero-latency updates
+      function connectWebSocket() {
+        const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+        const wsUrl = `${proto}//${window.location.host}/ws`;
+
+        try {
+          ws = new WebSocket(wsUrl);
+        } catch (e) {
+          return;
+        }
+
+        ws.onopen = () => {
+          checkStatus();
+        };
+
+        ws.onmessage = (evt) => {
+          try {
+            const msg = JSON.parse(evt.data);
+            if (msg.type === "scene") {
+              if (msg.sceneVersion !== undefined) {
+                lastVersion = msg.sceneVersion;
+              }
+              triggerRefresh();
+            } else if (msg.type === "status" && msg.data) {
+              const v = msg.data.sceneVersion;
+              if (v !== undefined && v !== lastVersion) {
+                lastVersion = v;
+                triggerRefresh();
+              }
+            }
+          } catch (e) {}
+        };
+
+        ws.onclose = () => {
+          setTimeout(connectWebSocket, 2000);
+        };
+
+        ws.onerror = () => {
+          try { ws.close(); } catch (e) {}
+        };
+      }
+
+      connectWebSocket();
+      // Polling heartbeat fallback
+      setInterval(checkStatus, 3000);
+      triggerRefresh();
+
+      // Keyboard & Gesture controls (fullscreen & background toggle)
+      window.addEventListener("keydown", (e) => {
+        if (e.key === "f" || e.key === "F") {
+          if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen().catch(() => {});
+          } else {
+            document.exitFullscreen().catch(() => {});
+          }
+        } else if (e.key === "b" || e.key === "B") {
+          if (document.body.classList.contains("bg-black")) {
+            document.body.classList.remove("bg-black");
+            document.body.classList.add("bg-checker");
+          } else if (document.body.classList.contains("bg-checker")) {
+            document.body.classList.remove("bg-checker");
+            document.body.classList.add("bg-white");
+          } else if (document.body.classList.contains("bg-white")) {
+            document.body.classList.remove("bg-white");
+          } else {
+            document.body.classList.add("bg-black");
+          }
+        } else if (e.key === "r" || e.key === "R") {
+          triggerRefresh();
+        }
+      });
+
+      window.addEventListener("dblclick", () => {
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen().catch(() => {});
+        } else {
+          document.exitFullscreen().catch(() => {});
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

@@ -9,6 +9,7 @@ Three faces, one app:
 | Face | What it is |
 |---|---|
 | **Web editor (network)** | Full visual editor (drag, resize, presets, templates) served by the app on your LAN — open it from any phone, tablet or laptop. No internet needed. |
+| **Clean display (OBS / screen)** | Pure design output at `/display` (no toolbars or editor chrome, transparent background, live auto-sync). Perfect for OBS Browser Source, TV screens, or projectors. |
 | **Desktop companion (local)** | Cute Tk window for the person at the machine: live on-air preview, big GO LIVE button, design picker, and quick-change fields that update the broadcast instantly. |
 | **NDI sender** | Background thread re-rendering your exact scene with Pillow, pushing BGRA frames via `cyndilib` (real NDI, with alpha). |
 
@@ -42,6 +43,16 @@ Three faces, one app:
 
 ## Run from source
 
+### With [uv](https://docs.astral.sh/uv/) (recommended)
+
+```bash
+uv sync              # install dependencies into virtualenv
+uv run app.py        # desktop window + web editor (recommended)
+uv run server.py     # web editor only (headless / dev)
+```
+
+### With pip
+
 ```bash
 pip install -r requirements.txt
 python3 app.py       # desktop window + web editor (recommended)
@@ -54,6 +65,7 @@ sh run.sh            # web editor only (headless / dev)
 - On other devices on the same network, open the LAN URL shown in the
   desktop window (or printed on startup) — the **full editor** works there.
   Hand a volunteer your phone: they can tweak text while you run NDI.
+- To view **just the design** (clean output without editor UI, transparent background, auto-updating live in real time), open `http://localhost:3200/display` (or `http://<lan-ip>:3200/display`). Use this as an **OBS Browser Source** or on confidence monitors / projectors. Press `F` for fullscreen, `B` to toggle test background.
 
 ## The local operator flow (desktop window)
 

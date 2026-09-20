@@ -44,6 +44,9 @@ body{margin:0;background:var(--bg);color:var(--txt);
 .btn-live.off{background:#2f9e5f}
 .btn-icon{width:34px;height:34px;border-radius:50%;border:1px solid var(--line);
   background:var(--panel2);color:var(--txt);font-weight:800;cursor:pointer}
+.btn-display{display:inline-flex;align-items:center;gap:6px;background:var(--panel2);border:1px solid var(--line);
+  color:var(--txt);font-weight:700;font-size:13px;padding:8px 14px;border-radius:10px;text-decoration:none;cursor:pointer;transition:all .15s}
+.btn-display:hover{background:var(--panel);border-color:var(--accent);color:#fff}
 
 /* ── main ── */
 #main{flex:1;display:grid;grid-template-columns:290px 1fr 310px;gap:12px;

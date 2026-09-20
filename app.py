@@ -276,12 +276,16 @@ class App:
         self.tpl_list.bind("<Double-Button-1>", lambda e: self.on_load_template())
         self._btn(trow, "Open", self.on_load_template, bg=PANEL2, fg=TXT, size=10).pack(side="left", padx=(8, 0))
 
-        # web access
-        w = self._card(self.root, "Full editor (this network)")
+        # web & display access
+        w = self._card(self.root, "Web editor & Display view (OBS)")
         wrow = tk.Frame(w, bg=PANEL)
         wrow.pack(fill="x")
         self._btn(wrow, "🌐 Open editor", self.on_open_web, bg=PANEL2, fg=TXT, size=10).pack(side="left")
-        self._btn(wrow, "📋 Copy phone link", self.on_copy_link, bg=PANEL2, fg=TXT, size=10).pack(side="left", padx=8)
+        self._btn(wrow, "📋 Copy editor link", self.on_copy_link, bg=PANEL2, fg=TXT, size=10).pack(side="left", padx=8)
+        drow = tk.Frame(w, bg=PANEL)
+        drow.pack(fill="x", pady=(6, 0))
+        self._btn(drow, "📺 Open display", self.on_open_display, bg=PANEL2, fg=TXT, size=10).pack(side="left")
+        self._btn(drow, "📋 Copy display link (OBS)", self.on_copy_display_link, bg=PANEL2, fg=TXT, size=10).pack(side="left", padx=8)
         self.lan_lbl = self._lbl(w, "", fg=MUT, size=10)
         self.lan_lbl.pack(anchor="w", pady=(8, 0))
 
@@ -350,6 +354,9 @@ class App:
     def on_open_web(self):
         webbrowser.open(f"http://127.0.0.1:{PORT}")
 
+    def on_open_display(self):
+        webbrowser.open(f"http://127.0.0.1:{PORT}/display")
+
     def on_copy_link(self):
         try:
             lan = self.api.network().get("urls", [""])[0]
@@ -358,6 +365,16 @@ class App:
         self.root.clipboard_clear()
         self.root.clipboard_append(lan)
         self.inbox.put(("toast", f"Copied: {lan} — open it on any phone/laptop here"))
+
+    def on_copy_display_link(self):
+        try:
+            urls = self.api.network().get("urls", [])
+            lan = (urls[0] if urls else f"http://127.0.0.1:{PORT}").rstrip("/") + "/display"
+        except Exception:
+            lan = f"http://<this-pc>:{PORT}/display"
+        self.root.clipboard_clear()
+        self.root.clipboard_append(lan)
+        self.inbox.put(("toast", f"Copied display URL (OBS): {lan}"))
 
     # -- refresh --------------------------------------------------------------
     def _refresh_all(self, first=False):
@@ -484,10 +501,15 @@ def main():
     root = tk.Tk()
     app = App(root, api)
 
-    # open the web editor too (non-technical users expect *something* to appear)
+    # open the browser (web editor or clean display view)
+    target_route = "/display" if "--display" in sys.argv else ""
+    for arg in sys.argv:
+        if arg.startswith("--route="):
+            target_route = arg.split("=", 1)[1]
     if "--no-browser" not in sys.argv:
+        url = f"http://127.0.0.1:{PORT}{target_route}"
         try:
-            threading.Timer(1.0, lambda: webbrowser.open(f"http://127.0.0.1:{PORT}")).start()
+            threading.Timer(1.0, lambda: webbrowser.open(url)).start()
         except Exception:
             pass
 
