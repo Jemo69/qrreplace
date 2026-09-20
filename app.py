@@ -28,6 +28,36 @@ import urllib.error
 import urllib.request
 import webbrowser
 
+# In windowed mode (e.g. PyInstaller console=False or pythonw), sys.stdout
+# and sys.stderr are None. Provide dummy streams so libraries (uvicorn,
+# logging, etc.) that inspect stdout (e.g. .isatty()) or write to it do not crash.
+class _NullWriter:
+    def write(self, *args, **kwargs):
+        pass
+
+    def flush(self, *args, **kwargs):
+        pass
+
+    def isatty(self):
+        return False
+
+
+if sys.stdout is None:
+    try:
+        sys.stdout = open(os.devnull, "w", encoding="utf-8")
+    except Exception:
+        sys.stdout = _NullWriter()
+if sys.stderr is None:
+    try:
+        sys.stderr = open(os.devnull, "w", encoding="utf-8")
+    except Exception:
+        sys.stderr = _NullWriter()
+if sys.stdin is None:
+    try:
+        sys.stdin = open(os.devnull, "r", encoding="utf-8")
+    except Exception:
+        pass
+
 PORT = int(os.environ.get("PORT", "3200"))
 BASE = f"http://127.0.0.1:{PORT}"
 
@@ -96,7 +126,13 @@ def start_backend(port: int = PORT):
     import uvicorn
     import server as backend
 
-    config = uvicorn.Config(backend.app, host="0.0.0.0", port=port, log_level="warning")
+    config = uvicorn.Config(
+        backend.app,
+        host="0.0.0.0",
+        port=port,
+        log_level="warning",
+        use_colors=False,
+    )
     _uvicorn_server = uvicorn.Server(config)
     t = threading.Thread(target=_uvicorn_server.run, daemon=True, name="uvicorn")
     t.start()

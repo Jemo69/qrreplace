@@ -559,4 +559,4 @@ if __name__ == "__main__":
         print(f"  LAN: {u}")
     print(f"  NDI: {'cyndilib OK' if HAVE_NDI else 'preview-only (cyndilib missing)'}")
     print("==================================================\n")
-    uvicorn.run("server:app", host="0.0.0.0", port=port, log_level="warning")
+    uvicorn.run("server:app", host="0.0.0.0", port=port, log_level="warning", use_colors=False)
