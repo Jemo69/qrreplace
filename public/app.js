@@ -47,7 +47,7 @@ function markDirty(refreshTrue = true) {
       markDirty(false);
     }
   }, 700);
-  renderAll();
+  renderEditor();
 }
 
 /* ═══════════════ image URLs ═══════════════ */
@@ -272,9 +272,20 @@ function renderEditor() {
 
 function layerById(id) { return state.scene?.layers.find((l) => l.id === id); }
 
+const HANDLE_CURSORS = [
+  "nwse-resize", // 0: top-left
+  "ns-resize",   // 1: top-center
+  "nesw-resize", // 2: top-right
+  "ew-resize",   // 3: middle-right
+  "nwse-resize", // 4: bottom-right
+  "ns-resize",   // 5: bottom-center
+  "nesw-resize", // 6: bottom-left
+  "ew-resize",   // 7: middle-left
+];
+
 function drawSelection() {
   const L = state.sel && layerById(state.sel);
-  if (!L) return;
+  if (!L) { state._handles = null; return; }
   const dx = L.x * S, dy = L.y * S, dw = L.w * S, dh = L.h * S;
   ctx.save();
   ctx.strokeStyle = "#f5b301"; ctx.lineWidth = 2;
@@ -283,7 +294,11 @@ function drawSelection() {
   const pts = [[dx, dy], [dx + dw / 2, dy], [dx + dw, dy], [dx + dw, dy + dh / 2],
     [dx + dw, dy + dh], [dx + dw / 2, dy + dh], [dx, dy + dh], [dx, dy + dh / 2]];
   state._handles = pts;
-  for (const [hx, hy] of pts) ctx.fillRect(hx - 5, hy - 5, 10, 10);
+  for (const [hx, hy] of pts) {
+    ctx.fillRect(hx - 5, hy - 5, 10, 10);
+    ctx.strokeStyle = "#141926"; ctx.lineWidth = 1;
+    ctx.strokeRect(hx - 5, hy - 5, 10, 10);
+  }
   ctx.restore();
 }
 
@@ -291,7 +306,7 @@ function hitHandle(mx, my) {
   if (!state._handles) return -1;
   for (let i = 0; i < state._handles.length; i++) {
     const [hx, hy] = state._handles[i];
-    if (Math.abs(mx - hx) <= 7 && Math.abs(my - hy) <= 7) return i;
+    if (Math.abs(mx - hx) <= 12 && Math.abs(my - hy) <= 12) return i;
   }
   return -1;
 }
@@ -312,36 +327,53 @@ function evPos(e) {
 
 cv.addEventListener("pointerdown", (e) => {
   if (!state.scene) return;
-  cv.setPointerCapture(e.pointerId);
+  e.preventDefault();
+  try { cv.setPointerCapture(e.pointerId); } catch (_) {}
   const [mx, my] = evPos(e);
-  const hi = hitHandle(mx, my);
   const L = state.sel && layerById(state.sel);
+  const hi = L ? hitHandle(mx, my) : -1;
   if (hi >= 0 && L) {
     state.drag = { kind: "resize", h: hi, L, sx: mx, sy: my,
       ox: L.x, oy: L.y, ow: L.w, oh: L.h, aspect: (hi % 2 === 0) && (L.type === "qr" || L.type === "image") };
   } else {
-    const hit = hitLayer(mx, my);
+    let hit = null;
+    if (L && !L.lock && L.visible && mx >= L.x * S && mx <= (L.x + L.w) * S && my >= L.y * S && my <= (L.y + L.h) * S) {
+      hit = L;
+    } else {
+      hit = hitLayer(mx, my);
+    }
+    const prevSel = state.sel;
     state.sel = hit ? hit.id : null;
     if (hit) state.drag = { kind: "move", L: hit, sx: mx, sy: my, ox: hit.x, oy: hit.y };
     else state.drag = null;
-    renderPanels();
+    if (prevSel !== state.sel) renderPanels();
   }
   renderEditor();
 });
+
 cv.addEventListener("pointermove", (e) => {
-  if (!state.drag) return;
   const [mx, my] = evPos(e);
+  if (!state.drag) {
+    const L = state.sel && layerById(state.sel);
+    const hi = L ? hitHandle(mx, my) : -1;
+    if (hi >= 0) {
+      cv.style.cursor = HANDLE_CURSORS[hi] || "default";
+    } else {
+      const hit = hitLayer(mx, my);
+      cv.style.cursor = hit ? "move" : "default";
+    }
+    return;
+  }
+  e.preventDefault();
   const d = state.drag, dx = (mx - d.sx) / S, dy = (my - d.sy) / S;
   if (d.kind === "move") {
+    cv.style.cursor = "move";
     d.L.x = Math.round(snapVal(d.ox + dx, [0, CW / 2 - d.L.w / 2, CW - d.L.w]));
     d.L.y = Math.round(snapVal(d.oy + dy, [0, CH / 2 - d.L.h / 2, CH - d.L.h, 540 - d.L.h / 2]));
   } else {
+    cv.style.cursor = HANDLE_CURSORS[d.h] || "default";
     let { ow, oh, ox, oy } = d;
     const min = 20;
-    const setW = (v) => { d.L.w = Math.max(min, Math.round(v)); };
-    const setH = (v) => { d.L.h = Math.max(min, Math.round(v)); };
-    if ([0, 1, 2].includes(d.h)) { setH(oh - 0 + (d.h === 1 ? 0 : 0)); } // top row handled below
-    // corners + edges
     const left = [0, 6, 7].includes(d.h), right = [2, 3, 4].includes(d.h);
     const top = [0, 1, 2].includes(d.h), bot = [4, 5, 6].includes(d.h);
     let nw = ow, nh = oh, nx = ox, ny = oy;
@@ -361,9 +393,18 @@ cv.addEventListener("pointermove", (e) => {
   }
   renderEditor();
 });
-cv.addEventListener("pointerup", () => {
-  if (state.drag) { state.drag = null; markDirty(); renderPanels(); }
-});
+
+function endDrag() {
+  if (state.drag) {
+    state.drag = null;
+    markDirty();
+    renderPanels();
+  }
+  cv.style.cursor = "default";
+}
+cv.addEventListener("pointerup", endDrag);
+window.addEventListener("pointerup", endDrag);
+window.addEventListener("pointercancel", endDrag);
 function snapVal(v, targets) {
   for (const t of targets) if (Math.abs(v - t) * S < 9) return t;
   return v;
@@ -462,7 +503,7 @@ function renderLayers() {
       b.onclick = (e) => { e.stopPropagation(); fn(); };
       d.appendChild(b);
     };
-    mk(L.visible ? "👁" : "🚫", "Show / hide", () => { L.visible = !L.visible; markDirty(); }, !L.visible);
+    mk(L.visible ? "👁" : "🚫", "Show / hide", () => { L.visible = !L.visible; markDirty(); renderLayers(); }, !L.visible);
     mk("🔒", "Lock / unlock", () => { L.lock = !L.lock; renderAll(); }, !L.lock);
     mk("▲", "Bring forward", () => moveLayer(L.id, 1));
     mk("▼", "Send backward", () => moveLayer(L.id, -1));
@@ -475,7 +516,7 @@ function moveLayer(id, dir) {
   const j = i + dir;
   if (i < 0 || j < 0 || j >= ls.length) return;
   [ls[i], ls[j]] = [ls[j], ls[i]];
-  markDirty();
+  markDirty(); renderLayers();
 }
 function deleteLayer(id) {
   state.scene.layers = state.scene.layers.filter((l) => l.id !== id);
@@ -493,9 +534,16 @@ function duplicateLayer(id) {
   markDirty(); renderPanels();
 }
 
-/* ═══════════════ add ═══════════════ */
-document.querySelectorAll(".add").forEach((b) =>
-  b.onclick = () => addLayer(b.dataset.add));
+/* ═══════════════ add & drag-to-place ═══════════════ */
+document.querySelectorAll(".add").forEach((b) => {
+  b.setAttribute("draggable", "true");
+  b.addEventListener("dragstart", (e) => {
+    e.dataTransfer.setData("application/x-qrreplace-add", b.dataset.add);
+    e.dataTransfer.effectAllowed = "copy";
+  });
+  b.onclick = () => addLayer(b.dataset.add);
+});
+
 document.querySelectorAll(".preset").forEach((b) =>
   b.onclick = async () => {
     if (state.scene.layers.length && !confirm("Replace the current design with the preset?")) return;
@@ -507,32 +555,77 @@ document.querySelectorAll(".preset").forEach((b) =>
     } catch (e) { alert("Couldn't apply preset: " + e.message); }
   });
 
-function addLayer(kind) {
-  const cx = CW / 2, cy = CH / 2;
+function addLayer(kind, atX, atY) {
+  const cx = atX !== undefined ? atX : CW / 2;
+  const cy = atY !== undefined ? atY : CH / 2;
   let L = null;
-  if (kind === "qr") L = { id: uid(), type: "qr", name: "QR code", x: cx - 190, y: cy - 100, w: 380, h: 380,
+  if (kind === "qr") L = { id: uid(), type: "qr", name: "QR code", x: Math.round(cx - 190), y: Math.round(cy - 190), w: 380, h: 380,
     opacity: 1, visible: true, lock: false, qrMode: "generated", src: "", content: "https://example.com", fg: "#0d1326",
     bg: "#ffffff", transparentBg: false, showBox: true, radius: 28, pad: 22 };
-  else if (kind === "text") L = { id: uid(), type: "text", name: "Heading", x: cx - 400, y: cy - 60, w: 800, h: 140,
+  else if (kind === "text") L = { id: uid(), type: "text", name: "Heading", x: Math.round(cx - 400), y: Math.round(cy - 70), w: 800, h: 140,
     opacity: 1, visible: true, lock: false, text: "New heading — click to edit", fontSize: 84,
     color: "#ffffff", bold: true, align: "center" };
   else if (kind === "qr-image") { openUpload((info) => {
       insertLayer({ id: uid(), type: "image", qrImage: true, name: "Uploaded QR code",
-        x: cx - 190, y: cy - 100, w: 380, h: 380,
+        x: Math.round(cx - 190), y: Math.round(cy - 190), w: 380, h: 380,
         opacity: 1, visible: true, lock: false, src: info.src, fit: "contain" });
     }); return; }
   else if (kind === "image") { openUpload((info) => {
       const W = 420, H = Math.max(80, Math.round(420 * (info.h / Math.max(1, info.w))));
-      insertLayer({ id: uid(), type: "image", name: "Logo", x: CW - W - 90, y: CH - H - 90, w: W, h: H,
+      insertLayer({ id: uid(), type: "image", name: "Logo", x: Math.round(cx - W / 2), y: Math.round(cy - H / 2), w: W, h: H,
         opacity: 1, visible: true, lock: false, src: info.src, fit: "contain" });
     }); return; }
   else if (kind === "background") { openUpload((info) => {
       insertLayer({ id: uid(), type: "background", name: "Background photo", x: 0, y: 570, w: 1920, h: 510,
         opacity: 0.3, visible: true, lock: false, src: info.src, fit: "cover", color: "#0d1326" });
     }); return; }
-  else if (kind === "shape") L = shapeLayer({ id: uid(), name: "Bar", x: 120, y: CH - 160, w: 700, h: 26, fill: "#f5b301" });
+  else if (kind === "shape") L = shapeLayer({ id: uid(), name: "Bar", x: Math.round(cx - 350), y: Math.round(cy - 13), w: 700, h: 26, fill: "#f5b301" });
   if (L) insertLayer(L);
 }
+
+function uploadAndInsert(file, atX, atY) {
+  const fd = new FormData();
+  fd.append("file", file);
+  fetch("/api/upload", { method: "POST", body: fd })
+    .then((r) => { if (!r.ok) throw new Error("Upload failed"); return r.json(); })
+    .then((info) => {
+      const W = 420, H = Math.max(80, Math.round(420 * (info.h / Math.max(1, info.w))));
+      const cx = atX !== undefined ? atX : CW / 2;
+      const cy = atY !== undefined ? atY : CH / 2;
+      insertLayer({
+        id: uid(), type: "image", name: file.name.replace(/\.[^/.]+$/, "") || "Uploaded Image",
+        x: Math.round(cx - W / 2), y: Math.round(cy - H / 2), w: W, h: H,
+        opacity: 1, visible: true, lock: false, src: info.src, fit: "contain"
+      });
+    })
+    .catch((err) => alert("Couldn't use that image: " + err.message));
+}
+
+const stageEl = $("stage");
+if (stageEl) {
+  stageEl.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+  });
+  stageEl.addEventListener("drop", (e) => {
+    e.preventDefault();
+    const r = cv.getBoundingClientRect();
+    const atX = Math.round((e.clientX - r.left) * (CW / r.width));
+    const atY = Math.round((e.clientY - r.top) * (CH / r.height));
+    const kind = e.dataTransfer.getData("application/x-qrreplace-add");
+    if (kind) {
+      addLayer(kind, atX, atY);
+      return;
+    }
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const f = e.dataTransfer.files[0];
+      if (f.type.startsWith("image/")) {
+        uploadAndInsert(f, atX, atY);
+      }
+    }
+  });
+}
+
 function insertLayer(L) {
   state.scene.layers.push(L);
   state.sel = L.id;
